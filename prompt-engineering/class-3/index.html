@@ -1,0 +1,1530 @@
+<!-- https://docs.google.com/forms/d/e/1FAIpQLSch6O3lo4VgIdSR4jGhV3pQN85b1mwCrmH4FaefHl62HMa0Sg/viewform?usp=dialog -->
+
+
+
+
+
+
+
+
+
+
+
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ReviewPilot — AI Code Review That Catches What Humans Miss</title>
+  <meta name="description" content="ReviewPilot reviews every pull request for security holes, logic bugs, and style drift in under 30 seconds. Ship faster without lowering the bar.">
+
+  <style>
+    /*
+     * ============================================================
+     * DESIGN TOKENS & DECISIONS
+     * ============================================================
+     * Primary:     #2563EB  (blue-600)   — CTA, links, icons
+     * Accent:      #10B981  (emerald-500) — success, positive states
+     * Neutral-0:   #F9FAFB  near-white
+     * Neutral-1:   #F3F4F6  light-gray surface
+     * Neutral-2:   #9CA3AF  muted text
+     * Neutral-3:   #374151  body text alt
+     * Neutral-4:   #111827  near-black
+     * Success:     #10B981  Warning: #F59E0B  Error: #EF4444
+     *
+     * Font: system-ui stack — zero network requests
+     * Heading weight 900 gives the display line visual mass
+     * without a display typeface download.
+     *
+     * Hero visual and feature mock are inline SVGs simulating
+     * a PR review panel and a rule-config panel respectively.
+     *
+     * FAQ uses <details>/<summary> — no JS.
+     * Sticky header background uses backdrop-filter for legibility
+     * over the hero; degrades gracefully where unsupported.
+     *
+     * Grid: mobile 1-col → 768px 2-col → 1024px full layout.
+     * Section padding: 64px mobile → 96px desktop.
+     * ============================================================
+     */
+
+    /* === Reset === */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    /* === Design Tokens === */
+    :root {
+      /* Colors */
+      --clr-primary:        #2563EB;
+      --clr-primary-hover:  #1D4ED8;
+      --clr-primary-active: #1E40AF;
+      --clr-accent:         #10B981;
+      --clr-accent-hover:   #059669;
+
+      --n0: #F9FAFB;
+      --n1: #F3F4F6;
+      --n2: #9CA3AF;
+      --n3: #374151;
+      --n4: #111827;
+
+      --clr-success: #10B981;
+      --clr-warning: #F59E0B;
+      --clr-error:   #EF4444;
+
+      --clr-bg:      #ffffff;
+      --clr-surface: var(--n0);
+      --clr-text:    var(--n4);
+      --clr-muted:   var(--n3);
+      --clr-border:  var(--n1);
+
+      /* Typography */
+      --font: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+              Helvetica, Arial, sans-serif, "Apple Color Emoji";
+      --font-mono: ui-monospace, "Cascadia Code", "Source Code Pro",
+                   Menlo, Consolas, monospace;
+
+      --text-display: 3.5rem;   /* lh 1.10 */
+      --text-h1:      2.5rem;   /* lh 1.15 */
+      --text-h2:      2rem;     /* lh 1.20 */
+      --text-h3:      1.25rem;  /* lh 1.30 */
+      --text-body:    1rem;     /* lh 1.60 */
+      --text-sm:      0.875rem; /* lh 1.50 */
+
+      /* Spacing (4 px base) */
+      --s1:  0.25rem;  /* 4  */
+      --s2:  0.5rem;   /* 8  */
+      --s3:  0.75rem;  /* 12 */
+      --s4:  1rem;     /* 16 */
+      --s6:  1.5rem;   /* 24 */
+      --s8:  2rem;     /* 32 */
+      --s12: 3rem;     /* 48 */
+      --s16: 4rem;     /* 64 */
+      --s24: 6rem;     /* 96 */
+
+      /* Radius */
+      --r-sm: 0.25rem;
+      --r-md: 0.5rem;
+      --r-lg: 1rem;
+      --r-xl: 1.5rem;
+
+      /* Shadow */
+      --shadow: 0 4px 24px rgba(0,0,0,0.08);
+
+      /* Motion */
+      --dur-micro: 150ms;
+      --dur-large: 250ms;
+      --ease-out:  ease-out;
+    }
+
+    /* Kill all motion if user prefers it */
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration:    0.01ms !important;
+        animation-iteration-count: 1 !important;
+        transition-duration:   0.01ms !important;
+        scroll-behavior:       auto   !important;
+      }
+    }
+
+    /* === Base === */
+    html { scroll-behavior: smooth; }
+
+    body {
+      font-family:  var(--font);
+      font-size:    var(--text-body);
+      line-height:  1.6;
+      color:        var(--clr-text);
+      background:   var(--clr-bg);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    img, svg { display: block; max-width: 100%; }
+
+    /* === Links === */
+    a {
+      color:                  var(--clr-primary);
+      text-decoration:        underline;
+      text-decoration-thickness: 1px;
+      text-underline-offset:  3px;
+      transition: color var(--dur-micro) ease;
+    }
+    a:hover { color: var(--clr-primary-hover); }
+    a:focus-visible {
+      outline:        2px solid var(--clr-primary);
+      outline-offset: 3px;
+      border-radius:  var(--r-sm);
+    }
+
+    /* === Skip Link === */
+    .skip-link {
+      position:      absolute;
+      top:           -100%;
+      left:          var(--s4);
+      z-index:       9999;
+      padding:       var(--s2) var(--s4);
+      background:    var(--clr-primary);
+      color:         #fff;
+      font-weight:   700;
+      text-decoration: none;
+      border-radius: var(--r-md);
+      transition:    top var(--dur-micro) ease;
+    }
+    .skip-link:focus { top: var(--s4); }
+
+    /* === SR-only === */
+    .sr-only {
+      position:   absolute;
+      width:      1px;
+      height:     1px;
+      padding:    0;
+      margin:     -1px;
+      overflow:   hidden;
+      clip:       rect(0,0,0,0);
+      white-space: nowrap;
+      border:     0;
+    }
+
+    /* === Buttons === */
+    .btn {
+      display:        inline-flex;
+      align-items:    center;
+      gap:            var(--s2);
+      padding:        var(--s3) var(--s6);
+      font-family:    inherit;
+      font-size:      var(--text-body);
+      font-weight:    700;
+      line-height:    1;
+      text-decoration: none;
+      border:         2px solid transparent;
+      border-radius:  var(--r-md);
+      cursor:         pointer;
+      transition:
+        background-color var(--dur-micro) ease,
+        color            var(--dur-micro) ease,
+        border-color     var(--dur-micro) ease,
+        box-shadow       var(--dur-micro) ease;
+    }
+    .btn:focus-visible {
+      outline:        3px solid var(--clr-primary);
+      outline-offset: 3px;
+    }
+    .btn:disabled {
+      opacity: 0.45;
+      cursor:  not-allowed;
+    }
+
+    .btn-primary {
+      background: var(--clr-primary);
+      color:      #fff;
+    }
+    .btn-primary:hover  { background: var(--clr-primary-hover); color: #fff; }
+    .btn-primary:active { background: var(--clr-primary-active); color: #fff; }
+
+    .btn-ghost {
+      background:   transparent;
+      color:        var(--clr-primary);
+      border-color: var(--clr-primary);
+    }
+    .btn-ghost:hover {
+      background: var(--clr-primary);
+      color:      #fff;
+    }
+
+    .btn-lg {
+      padding:     var(--s4) var(--s8);
+      font-size:   1.125rem;
+      border-radius: var(--r-md);
+    }
+
+    /* === Layout === */
+    .container {
+      width:         100%;
+      max-width:     1200px;
+      margin-inline: auto;
+      padding-inline: var(--s4);
+    }
+    @media (min-width: 768px)  { .container { padding-inline: var(--s8); } }
+    @media (min-width: 1280px) { .container { padding-inline: var(--s12); } }
+
+    .section-pad {
+      padding-block: var(--s16);
+    }
+    @media (min-width: 768px) {
+      .section-pad { padding-block: var(--s24); }
+    }
+
+    /* Shared section-header typography */
+    .section-eyebrow {
+      display:      block;
+      font-size:    var(--text-sm);
+      font-weight:  700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color:        var(--clr-primary);
+      margin-bottom: var(--s3);
+    }
+    .section-title {
+      font-size:    clamp(1.75rem, 3.5vw, var(--text-h2));
+      font-weight:  900;
+      line-height:  1.2;
+      letter-spacing: -0.02em;
+      color:        var(--clr-text);
+      margin-bottom: var(--s4);
+    }
+    .section-subtitle {
+      font-size:  1.0625rem;
+      color:      var(--clr-muted);
+      max-width:  54ch;
+      line-height: 1.65;
+    }
+    .section-header { margin-bottom: var(--s12); }
+
+
+    /* ============================================================
+       === Sticky Header ===
+       ============================================================ */
+    .site-header {
+      position:        sticky;
+      top:             0;
+      z-index:         100;
+      background:      rgba(255,255,255,0.92);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      border-bottom:   1px solid var(--clr-border);
+    }
+
+    .header-inner {
+      display:      flex;
+      align-items:  center;
+      gap:          var(--s4);
+      padding-block: var(--s3);
+    }
+
+    /* Logo */
+    .logo {
+      display:      flex;
+      align-items:  center;
+      gap:          var(--s2);
+      text-decoration: none;
+      color:        var(--clr-text);
+      font-weight:  900;
+      font-size:    1.125rem;
+      letter-spacing: -0.02em;
+      flex-shrink:  0;
+      transition:   color var(--dur-micro) ease;
+    }
+    .logo:hover { color: var(--clr-primary); }
+    .logo:focus-visible {
+      outline:       2px solid var(--clr-primary);
+      outline-offset: 3px;
+      border-radius: var(--r-sm);
+    }
+    .logo-icon {
+      width:  30px;
+      height: 30px;
+      flex-shrink: 0;
+    }
+
+    /* Primary nav — hidden on mobile, flex on 768+ */
+    .primary-nav {
+      display: none;
+      list-style: none;
+      margin-inline-start: auto;
+    }
+    @media (min-width: 768px) {
+      .primary-nav {
+        display:     flex;
+        align-items: center;
+        gap:         var(--s6);
+      }
+    }
+    .primary-nav a {
+      text-decoration: none;
+      font-size:  var(--text-sm);
+      font-weight: 600;
+      color:       var(--clr-muted);
+      transition:  color var(--dur-micro) ease;
+    }
+    .primary-nav a:hover,
+    .primary-nav a:focus-visible { color: var(--clr-text); }
+
+    .header-cta {
+      margin-inline-start: auto;
+      font-size: var(--text-sm) !important;
+      padding:   var(--s2) var(--s4) !important;
+    }
+    @media (min-width: 768px) {
+      .header-cta { margin-inline-start: var(--s4); }
+    }
+
+
+    /* ============================================================
+       === Hero ===
+       ============================================================ */
+    .hero {
+      background:   var(--clr-bg);
+      padding-block: var(--s16);
+      overflow:      hidden;
+    }
+    @media (min-width: 768px) { .hero { padding-block: var(--s24); } }
+
+    .hero-grid {
+      display: grid;
+      gap:     var(--s12);
+      align-items: center;
+    }
+    @media (min-width: 1024px) {
+      .hero-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: var(--s16);
+      }
+    }
+
+    .hero-badge {
+      display:      inline-flex;
+      align-items:  center;
+      gap:          var(--s2);
+      background:   color-mix(in srgb, var(--clr-accent) 12%, transparent);
+      color:        #065f46;
+      font-size:    var(--text-sm);
+      font-weight:  700;
+      padding:      var(--s1) var(--s3);
+      border-radius: 999px;
+      margin-bottom: var(--s4);
+    }
+    .hero-badge-dot {
+      width:         6px;
+      height:        6px;
+      border-radius: 50%;
+      background:    var(--clr-accent);
+      flex-shrink:   0;
+    }
+
+    .hero-title {
+      font-size:      clamp(2.25rem, 5.5vw, var(--text-display));
+      font-weight:    900;
+      line-height:    1.1;
+      letter-spacing: -0.035em;
+      color:          var(--clr-text);
+      margin-bottom:  var(--s4);
+    }
+
+    .hero-subtitle {
+      font-size:     1.125rem;
+      color:         var(--clr-muted);
+      max-width:     48ch;
+      line-height:   1.65;
+      margin-bottom: var(--s8);
+    }
+
+    .hero-actions {
+      display:     flex;
+      flex-wrap:   wrap;
+      align-items: center;
+      gap:         var(--s4);
+      margin-bottom: var(--s3);
+    }
+
+    .hero-text-link {
+      font-size:   var(--text-sm);
+      font-weight: 700;
+      color:       var(--clr-muted);
+      text-decoration: none;
+      display:     inline-flex;
+      align-items: center;
+      gap:         var(--s1);
+      transition:  color var(--dur-micro) ease;
+    }
+    .hero-text-link:hover { color: var(--clr-text); }
+    .hero-text-link:focus-visible {
+      outline:        2px solid var(--clr-primary);
+      outline-offset: 3px;
+      border-radius:  var(--r-sm);
+    }
+
+    .hero-note {
+      font-size: var(--text-sm);
+      color:     var(--clr-muted);
+    }
+
+    /* Hero product visual (SVG mock of a PR review panel) */
+    .hero-visual {
+      border-radius: var(--r-xl);
+      overflow:      hidden;
+      box-shadow:    var(--shadow), 0 0 0 1px rgba(255,255,255,0.06);
+      aspect-ratio:  4/3;
+      max-height:    420px;
+    }
+
+
+    /* ============================================================
+       === Social Proof Strip ===
+       ============================================================ */
+    .proof-strip {
+      background:   var(--clr-surface);
+      border-block: 1px solid var(--clr-border);
+      padding-block: var(--s8);
+    }
+
+    .proof-eyebrow {
+      text-align:     center;
+      font-size:      var(--text-sm);
+      font-weight:    700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color:          var(--n2);
+      margin-bottom:  var(--s6);
+    }
+
+    .proof-logos {
+      display:         flex;
+      flex-wrap:       wrap;
+      justify-content: center;
+      align-items:     center;
+      gap:             var(--s8);
+      list-style:      none;
+    }
+
+    .proof-logo {
+      font-size:    1.0625rem;
+      font-weight:  900;
+      color:        var(--n2);
+      letter-spacing: -0.02em;
+      opacity:      0.65;
+      transition:   opacity var(--dur-micro) ease;
+    }
+    .proof-logo:hover { opacity: 1; }
+
+
+    /* ============================================================
+       === Stats Band ===
+       ============================================================ */
+    .stats-band {
+      border-bottom: 1px solid var(--clr-border);
+      padding-block: var(--s12);
+    }
+
+    .stats-grid {
+      display:    grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap:        var(--s8);
+      text-align: center;
+    }
+    @media (min-width: 768px) {
+      .stats-grid { grid-template-columns: repeat(4, 1fr); }
+    }
+
+    .stat-value {
+      font-size:    2.5rem;
+      font-weight:  900;
+      letter-spacing: -0.03em;
+      color:        var(--clr-primary);
+      line-height:  1;
+      margin-bottom: var(--s2);
+    }
+
+    .stat-label {
+      font-size:  var(--text-sm);
+      color:      var(--clr-muted);
+      line-height: 1.5;
+    }
+
+
+    /* ============================================================
+       === Value Props ===
+       ============================================================ */
+    .value-props { background: var(--clr-bg); }
+
+    .cards-3 {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap:     var(--s6);
+    }
+    @media (min-width: 768px) {
+      .cards-3 { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .vp-card {
+      padding:      var(--s8);
+      background:   var(--clr-surface);
+      border:       1px solid var(--clr-border);
+      border-radius: var(--r-lg);
+      transition:
+        box-shadow var(--dur-large) var(--ease-out),
+        transform  var(--dur-large) var(--ease-out);
+    }
+    .vp-card:hover {
+      box-shadow: var(--shadow);
+      transform:  translateY(-2px);
+    }
+    .vp-card:focus-within { box-shadow: var(--shadow); }
+
+    .vp-icon {
+      width:         48px;
+      height:        48px;
+      display:       flex;
+      align-items:   center;
+      justify-content: center;
+      background:    color-mix(in srgb, var(--clr-primary) 10%, transparent);
+      border-radius: var(--r-md);
+      color:         var(--clr-primary);
+      margin-bottom: var(--s4);
+      flex-shrink:   0;
+    }
+
+    .vp-title {
+      font-size:    var(--text-h3);
+      font-weight:  800;
+      letter-spacing: -0.01em;
+      color:        var(--clr-text);
+      margin-bottom: var(--s2);
+    }
+
+    .vp-body {
+      font-size:  var(--text-sm);
+      color:      var(--clr-muted);
+      line-height: 1.65;
+    }
+
+
+    /* ============================================================
+       === How It Works ===
+       ============================================================ */
+    .how-it-works {
+      background: var(--n4);
+    }
+    .how-it-works .section-eyebrow  { color: var(--clr-accent); }
+    .how-it-works .section-title    { color: var(--n0); }
+    .how-it-works .section-subtitle { color: var(--n2); }
+
+    .steps-grid {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap:     var(--s6);
+      list-style: none;
+      counter-reset: steps;
+    }
+    @media (min-width: 768px) {
+      .steps-grid { grid-template-columns: repeat(3, 1fr); }
+    }
+
+    .step {
+      counter-increment: steps;
+      padding:       var(--s8);
+      background:    rgba(255,255,255,0.04);
+      border:        1px solid rgba(255,255,255,0.08);
+      border-radius: var(--r-lg);
+    }
+
+    .step::before {
+      content:       counter(steps, decimal-leading-zero);
+      display:       block;
+      font-size:     2.75rem;
+      font-weight:   900;
+      line-height:   1;
+      color:         var(--clr-primary);
+      opacity:       0.5;
+      margin-bottom: var(--s4);
+      font-variant-numeric: tabular-nums;
+    }
+
+    .step-title {
+      font-size:    var(--text-h3);
+      font-weight:  800;
+      color:        var(--n0);
+      margin-bottom: var(--s2);
+    }
+
+    .step-body {
+      font-size:  var(--text-sm);
+      color:      var(--n2);
+      line-height: 1.65;
+    }
+
+
+    /* ============================================================
+       === Feature Deep-Dive ===
+       ============================================================ */
+    .feature-section { background: var(--clr-bg); }
+
+    .feature-grid {
+      display:     grid;
+      gap:         var(--s12);
+      align-items: center;
+    }
+    @media (min-width: 1024px) {
+      .feature-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: var(--s16);
+      }
+    }
+
+    /* Feature mock SVG wrapper */
+    .feature-mock {
+      border-radius: var(--r-xl);
+      overflow:      hidden;
+      box-shadow:    var(--shadow);
+      aspect-ratio:  4/3;
+      max-height:    400px;
+    }
+
+    .feature-copy .section-title { margin-bottom: var(--s2); }
+    .feature-copy .feature-desc {
+      font-size:   1.0625rem;
+      color:       var(--clr-muted);
+      line-height: 1.65;
+      margin-top:  var(--s2);
+      margin-bottom: var(--s6);
+    }
+
+    .feature-list {
+      list-style:     none;
+      display:        flex;
+      flex-direction: column;
+      gap:            var(--s4);
+    }
+
+    .feature-item {
+      display:     flex;
+      gap:         var(--s3);
+      align-items: flex-start;
+    }
+
+    .check-dot {
+      flex-shrink: 0;
+      width:       20px;
+      height:      20px;
+      background:  var(--clr-accent);
+      border-radius: 50%;
+      display:     flex;
+      align-items: center;
+      justify-content: center;
+      margin-top:  2px;
+    }
+
+    .feature-item-text {
+      font-size:  var(--text-sm);
+      color:      var(--clr-muted);
+      line-height: 1.65;
+    }
+    .feature-item-text strong {
+      color:      var(--clr-text);
+      font-weight: 700;
+    }
+
+
+    /* ============================================================
+       === Testimonial ===
+       ============================================================ */
+    .testimonial-section {
+      background:  color-mix(in srgb, var(--clr-primary) 5%, var(--clr-bg));
+      border-block: 1px solid color-mix(in srgb, var(--clr-primary) 12%, transparent);
+    }
+
+    .testimonial-wrap {
+      max-width:     680px;
+      margin-inline: auto;
+      text-align:    center;
+    }
+
+    .quote-glyph {
+      display:     block;
+      font-size:   5rem;
+      line-height: 1;
+      font-family: Georgia, "Times New Roman", serif;
+      color:       var(--clr-primary);
+      opacity:     0.15;
+      margin-bottom: calc(-1 * var(--s6));
+      user-select: none;
+      aria-hidden: true;
+    }
+
+    .testimonial-text {
+      font-size:    clamp(1.2rem, 2.4vw, 1.6rem);
+      font-weight:  500;
+      line-height:  1.45;
+      letter-spacing: -0.01em;
+      color:        var(--clr-text);
+      margin-bottom: var(--s6);
+    }
+
+    .testimonial-attribution {
+      display:        flex;
+      flex-direction: column;
+      align-items:    center;
+      gap:            var(--s1);
+    }
+    .attr-name {
+      font-weight: 800;
+      font-size:   var(--text-body);
+      color:       var(--clr-text);
+    }
+    .attr-role {
+      font-size: var(--text-sm);
+      color:     var(--clr-muted);
+    }
+
+
+    /* ============================================================
+       === FAQ ===
+       ============================================================ */
+    .faq-section { background: var(--clr-bg); }
+    .faq-section .section-header { text-align: center; }
+
+    .faq-list {
+      max-width:      700px;
+      margin-inline:  auto;
+      display:        flex;
+      flex-direction: column;
+      gap:            var(--s2);
+    }
+
+    details.faq-item {
+      border:        1px solid var(--clr-border);
+      border-radius: var(--r-md);
+      overflow:      hidden;
+      transition:    border-color var(--dur-micro) ease;
+    }
+    details.faq-item[open] {
+      border-color: color-mix(in srgb, var(--clr-primary) 35%, transparent);
+    }
+
+    summary.faq-q {
+      display:         flex;
+      justify-content: space-between;
+      align-items:     center;
+      gap:             var(--s4);
+      padding:         var(--s4) var(--s6);
+      font-weight:     700;
+      font-size:       var(--text-body);
+      color:           var(--clr-text);
+      cursor:          pointer;
+      user-select:     none;
+      list-style:      none;
+      transition:      background-color var(--dur-micro) ease;
+    }
+    summary.faq-q::-webkit-details-marker { display: none; }
+    summary.faq-q::marker                 { display: none; }
+    summary.faq-q:hover                   { background: var(--clr-surface); }
+    summary.faq-q:focus-visible {
+      outline:        2px solid var(--clr-primary);
+      outline-offset: -2px;
+    }
+
+    .faq-icon {
+      flex-shrink:  0;
+      width:        22px;
+      height:       22px;
+      border-radius: 50%;
+      background:   var(--clr-surface);
+      border:       1px solid var(--clr-border);
+      display:      flex;
+      align-items:  center;
+      justify-content: center;
+      color:        var(--clr-muted);
+      transition:
+        transform         var(--dur-micro) ease,
+        background-color  var(--dur-micro) ease,
+        color             var(--dur-micro) ease;
+    }
+    details[open] .faq-icon {
+      transform:  rotate(45deg);
+      background: color-mix(in srgb, var(--clr-primary) 12%, transparent);
+      color:      var(--clr-primary);
+      border-color: color-mix(in srgb, var(--clr-primary) 20%, transparent);
+    }
+
+    .faq-answer {
+      padding:      0 var(--s6) var(--s4);
+      border-top:   1px solid var(--clr-border);
+    }
+    .faq-answer p {
+      font-size:   var(--text-sm);
+      color:       var(--clr-muted);
+      line-height: 1.7;
+      padding-top: var(--s4);
+    }
+    .faq-answer a { font-weight: 600; }
+
+
+    /* ============================================================
+       === Final CTA Band ===
+       ============================================================ */
+    .cta-band {
+      background: var(--clr-primary);
+      color:      #fff;
+    }
+    .cta-band-inner {
+      max-width:     600px;
+      margin-inline: auto;
+      text-align:    center;
+    }
+    .cta-band-title {
+      font-size:    clamp(1.75rem, 4vw, 2.5rem);
+      font-weight:  900;
+      line-height:  1.15;
+      letter-spacing: -0.025em;
+      margin-bottom: var(--s4);
+    }
+    .cta-band-sub {
+      font-size:     1.0625rem;
+      opacity:       0.85;
+      line-height:   1.65;
+      margin-bottom: var(--s8);
+    }
+    /* Inverted button on colored background */
+    .cta-band .btn-primary {
+      background: #fff;
+      color:      var(--clr-primary);
+    }
+    .cta-band .btn-primary:hover {
+      background: var(--n1);
+      color:      var(--clr-primary-hover);
+    }
+    .cta-band .btn-primary:focus-visible {
+      outline-color: #fff;
+    }
+    .cta-band-note {
+      font-size:    var(--text-sm);
+      opacity:      0.65;
+      margin-top:   var(--s4);
+    }
+
+
+    /* ============================================================
+       === Footer ===
+       ============================================================ */
+    .site-footer {
+      background:   var(--n4);
+      color:        var(--n2);
+      padding-block: var(--s8);
+    }
+
+    .footer-inner {
+      display:        flex;
+      flex-direction: column;
+      align-items:    center;
+      gap:            var(--s4);
+      text-align:     center;
+    }
+    @media (min-width: 768px) {
+      .footer-inner {
+        flex-direction: row;
+        justify-content: space-between;
+        text-align:      left;
+      }
+    }
+
+    .footer-logo {
+      font-weight:    900;
+      font-size:      var(--text-body);
+      color:          var(--n0);
+      text-decoration: none;
+      letter-spacing: -0.01em;
+      flex-shrink:    0;
+    }
+    .footer-logo:hover { color: #fff; }
+    .footer-logo:focus-visible {
+      outline:        2px solid var(--n0);
+      outline-offset: 3px;
+      border-radius:  var(--r-sm);
+    }
+
+    .footer-links {
+      display:         flex;
+      flex-wrap:       wrap;
+      justify-content: center;
+      gap:             var(--s4) var(--s6);
+      list-style:      none;
+    }
+    .footer-links a {
+      font-size:   var(--text-sm);
+      color:       var(--n2);
+      text-decoration: none;
+      transition:  color var(--dur-micro) ease;
+    }
+    .footer-links a:hover { color: var(--n0); }
+    .footer-links a:focus-visible {
+      color:          var(--n0);
+      outline:        2px solid var(--n0);
+      outline-offset: 3px;
+      border-radius:  var(--r-sm);
+    }
+
+    .footer-copy {
+      font-size: var(--text-sm);
+      color:     var(--n2);
+      white-space: nowrap;
+    }
+  </style>
+</head>
+<body>
+
+  <a href="#main-content" class="skip-link">Skip to main content</a>
+
+  <!-- ============================================================
+       Sticky Header
+       ============================================================ -->
+  <header class="site-header" role="banner">
+    <div class="container">
+      <div class="header-inner">
+
+        <a href="/" class="logo" aria-label="ReviewPilot — home">
+          <svg class="logo-icon" viewBox="0 0 30 30" fill="none" aria-hidden="true" focusable="false">
+            <rect width="30" height="30" rx="7" fill="#2563EB"/>
+            <path d="M7 9h16M7 15h10" stroke="#fff" stroke-width="2.2" stroke-linecap="round"/>
+            <circle cx="22" cy="21" r="4.5" fill="#10B981"/>
+            <path d="M20 21l1.4 1.5L24 19" stroke="#fff" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          ReviewPilot
+        </a>
+
+        <nav aria-label="Primary navigation">
+          <ul class="primary-nav" role="list">
+            <li><a href="#how-it-works">How it works</a></li>
+            <li><a href="#features">Features</a></li>
+            <li><a href="#faq">FAQ</a></li>
+            <li><a href="#pricing">Pricing</a></li>
+          </ul>
+        </nav>
+
+        <a href="#get-started" class="btn btn-primary header-cta">
+          Start free trial
+        </a>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ============================================================
+       Main
+       ============================================================ -->
+  <main id="main-content">
+
+    <!-- ============================================================
+         Hero
+         ============================================================ -->
+    <section class="hero" aria-labelledby="hero-heading">
+      <div class="container">
+        <div class="hero-grid">
+
+          <div class="hero-copy">
+            <div class="hero-badge" role="status" aria-label="Status: Now in public beta">
+              <span class="hero-badge-dot" aria-hidden="true"></span>
+              Now in public beta
+            </div>
+
+            <h1 id="hero-heading" class="hero-title">
+              Code review that catches what humans miss.
+            </h1>
+
+            <p class="hero-subtitle">
+              ReviewPilot scans every pull request for security holes, logic bugs, and style drift — in under 30&nbsp;seconds. Your team ships faster without lowering the bar.
+            </p>
+
+            <div class="hero-actions">
+              <a id="get-started" href="#trial" class="btn btn-primary btn-lg">
+                Start free — no credit card
+              </a>
+              <a href="#how-it-works" class="hero-text-link">
+                See how it works
+                <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true" focusable="false">
+                  <path d="M3 7h8M7.5 4l3.5 3-3.5 3" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+                </svg>
+              </a>
+            </div>
+
+            <p class="hero-note">Free forever for open-source repos. 14-day trial for private repos.</p>
+          </div>
+
+          <!-- Inline SVG: PR review panel mock -->
+          <div class="hero-visual" role="img" aria-label="ReviewPilot interface showing a pull request diff with two inline comments — one flagging a potential SQL injection vulnerability in red, and one warning about a missing null check in amber. A green status bar shows 2 issues found in 28 seconds.">
+            <svg width="100%" height="100%" viewBox="0 0 600 450" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+              <!-- Window background -->
+              <rect width="600" height="450" fill="#0F172A"/>
+              <!-- Title bar -->
+              <rect width="600" height="38" fill="#1E293B"/>
+              <circle cx="14" cy="19" r="5" fill="#EF4444" opacity="0.75"/>
+              <circle cx="28" cy="19" r="5" fill="#F59E0B" opacity="0.75"/>
+              <circle cx="42" cy="19" r="5" fill="#10B981" opacity="0.75"/>
+              <rect x="56" y="9" width="170" height="20" rx="5" fill="#0F172A"/>
+              <text x="64" y="22" font-family="ui-monospace,monospace" font-size="9" fill="#64748B">reviewpilot.dev/pr/1337</text>
+              <!-- PR header -->
+              <rect y="38" width="600" height="42" fill="#1E293B" opacity="0.5"/>
+              <circle cx="20" cy="59" r="9" fill="#7C3AED" opacity="0.6"/>
+              <text x="14" y="63" font-family="ui-monospace,monospace" font-size="9" fill="#C4B5FD">AK</text>
+              <rect x="36" y="52" width="200" height="10" rx="3" fill="#334155"/>
+              <rect x="36" y="67" width="80" height="8" rx="3" fill="#1D4ED8" opacity="0.55"/>
+              <rect x="122" y="67" width="68" height="8" rx="3" fill="#065F46" opacity="0.55"/>
+              <!-- Line numbers + code lines -->
+              <rect x="0" y="94" width="32" height="280" fill="#1E293B" opacity="0.4"/>
+              <!-- line 1 -->
+              <text x="8" y="108" font-family="ui-monospace,monospace" font-size="8" fill="#475569">12</text>
+              <rect x="40" y="101" width="48" height="9" rx="2" fill="#334155"/>
+              <rect x="96" y="101" width="110" height="9" rx="2" fill="#4B5563"/>
+              <rect x="214" y="101" width="72" height="9" rx="2" fill="#2563EB" opacity="0.6"/>
+              <!-- line 2 — error highlight -->
+              <rect x="0" y="116" width="600" height="18" fill="#EF4444" opacity="0.09"/>
+              <text x="8" y="128" font-family="ui-monospace,monospace" font-size="8" fill="#475569">13</text>
+              <rect x="40" y="119" width="36" height="9" rx="2" fill="#334155"/>
+              <rect x="84" y="119" width="60" height="9" rx="2" fill="#EF4444" opacity="0.45"/>
+              <rect x="152" y="119" width="90" height="9" rx="2" fill="#EF4444" opacity="0.3"/>
+              <rect x="250" y="119" width="120" height="9" rx="2" fill="#4B5563"/>
+              <!-- line 3 -->
+              <text x="8" y="144" font-family="ui-monospace,monospace" font-size="8" fill="#475569">14</text>
+              <rect x="40" y="137" width="80" height="9" rx="2" fill="#334155"/>
+              <rect x="128" y="137" width="160" height="9" rx="2" fill="#4B5563"/>
+              <!-- Inline comment — error (SQL injection) -->
+              <rect x="20" y="154" width="420" height="78" rx="8" fill="#1E293B" stroke="#EF4444" stroke-width="1.5"/>
+              <circle cx="40" cy="171" r="9" fill="#EF4444" opacity="0.18"/>
+              <path d="M36 171l3 3.2 5.5-6.4" stroke="#EF4444" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/>
+              <rect x="54" y="164" width="120" height="8" rx="2" fill="#EF4444" opacity="0.55"/>
+              <rect x="54" y="177" width="360" height="7" rx="2" fill="#475569"/>
+              <rect x="54" y="189" width="300" height="7" rx="2" fill="#475569"/>
+              <rect x="54" y="201" width="220" height="7" rx="2" fill="#475569"/>
+              <rect x="54" y="216" width="68" height="16" rx="5" fill="#2563EB" opacity="0.75"/>
+              <text x="62" y="227" font-family="ui-monospace,monospace" font-size="8" fill="#fff">Fix now →</text>
+              <!-- line 4 -->
+              <text x="8" y="252" font-family="ui-monospace,monospace" font-size="8" fill="#475569">15</text>
+              <rect x="40" y="245" width="120" height="9" rx="2" fill="#334155"/>
+              <rect x="168" y="245" width="80" height="9" rx="2" fill="#4B5563"/>
+              <!-- line 5 — warning highlight -->
+              <rect x="0" y="260" width="600" height="18" fill="#F59E0B" opacity="0.08"/>
+              <text x="8" y="272" font-family="ui-monospace,monospace" font-size="8" fill="#475569">16</text>
+              <rect x="40" y="263" width="96" height="9" rx="2" fill="#F59E0B" opacity="0.4"/>
+              <rect x="144" y="263" width="140" height="9" rx="2" fill="#4B5563"/>
+              <!-- Inline comment — warning (null check) -->
+              <rect x="20" y="285" width="380" height="62" rx="8" fill="#1E293B" stroke="#F59E0B" stroke-width="1.5"/>
+              <circle cx="40" cy="301" r="9" fill="#F59E0B" opacity="0.18"/>
+              <path d="M40 296v8M40 308v2" stroke="#F59E0B" stroke-width="1.8" stroke-linecap="round"/>
+              <rect x="54" y="295" width="90" height="8" rx="2" fill="#F59E0B" opacity="0.55"/>
+              <rect x="54" y="308" width="316" height="7" rx="2" fill="#475569"/>
+              <rect x="54" y="320" width="250" height="7" rx="2" fill="#475569"/>
+              <rect x="54" y="332" width="170" height="7" rx="2" fill="#475569"/>
+              <!-- Status bar -->
+              <rect y="412" width="600" height="38" fill="#1E293B"/>
+              <circle cx="18" cy="431" r="5" fill="#10B981"/>
+              <rect x="30" y="426" width="110" height="8" rx="2" fill="#334155"/>
+              <rect x="150" y="426" width="80" height="8" rx="2" fill="#334155"/>
+              <rect x="455" y="422" width="88" height="18" rx="5" fill="#2563EB" opacity="0.75"/>
+              <text x="462" y="433" font-family="ui-monospace,monospace" font-size="8" fill="#fff">2 issues · 28s</text>
+            </svg>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         Social Proof Strip
+         ============================================================ -->
+    <section class="proof-strip" aria-label="Trusted by engineering teams at">
+      <div class="container">
+        <p class="proof-eyebrow" aria-hidden="true">Trusted by engineering teams at</p>
+        <ul class="proof-logos" role="list" aria-label="Company logos">
+          <li class="proof-logo">Meridian</li>
+          <li class="proof-logo">Stackform</li>
+          <li class="proof-logo">Vectara</li>
+          <li class="proof-logo">Nimbly</li>
+          <li class="proof-logo">Quartex</li>
+          <li class="proof-logo">Ironveil</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         Stats
+         ============================================================ -->
+    <section class="stats-band section-pad" aria-label="ReviewPilot by the numbers">
+      <div class="container">
+        <div class="stats-grid">
+          <div>
+            <p class="stat-value" aria-label="94 percent">94%</p>
+            <p class="stat-label">of critical bugs caught before merge</p>
+          </div>
+          <div>
+            <p class="stat-value" aria-label="28 seconds">28s</p>
+            <p class="stat-label">median review time per pull request</p>
+          </div>
+          <div>
+            <p class="stat-value" aria-label="3.2 times">3.2×</p>
+            <p class="stat-label">faster PR cycle time on average</p>
+          </div>
+          <div>
+            <p class="stat-value" aria-label="4,800 plus">4,800+</p>
+            <p class="stat-label">repos actively reviewed this week</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         Value Props
+         ============================================================ -->
+    <section class="value-props section-pad" id="features" aria-labelledby="vp-heading">
+      <div class="container">
+        <header class="section-header">
+          <span class="section-eyebrow" aria-hidden="true">Why ReviewPilot</span>
+          <h2 id="vp-heading" class="section-title">Review smarter, not longer.</h2>
+          <p class="section-subtitle">Built for the team that already has standards but keeps finding the same categories of bugs in production.</p>
+        </header>
+
+        <div class="cards-3" role="list">
+
+          <article class="vp-card" role="listitem">
+            <div class="vp-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/>
+              </svg>
+            </div>
+            <h3 class="vp-title">Security that doesn't miss</h3>
+            <p class="vp-body">Flags injection attacks, hardcoded secrets, insecure dependencies, and broken auth patterns with source-level precision — not keyword guesses.</p>
+          </article>
+
+          <article class="vp-card" role="listitem">
+            <div class="vp-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/>
+              </svg>
+            </div>
+            <h3 class="vp-title">Logic bugs caught early</h3>
+            <p class="vp-body">Understands your existing code patterns and flags edge cases, off-by-ones, and race conditions before they reach any human reviewer's queue.</p>
+          </article>
+
+          <article class="vp-card" role="listitem">
+            <div class="vp-icon" aria-hidden="true">
+              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" focusable="false">
+                <line x1="4" y1="21" x2="4" y2="14"/><line x1="4" y1="10" x2="4" y2="3"/>
+                <line x1="12" y1="21" x2="12" y2="12"/><line x1="12" y1="8" x2="12" y2="3"/>
+                <line x1="20" y1="21" x2="20" y2="16"/><line x1="20" y1="12" x2="20" y2="3"/>
+                <line x1="1" y1="14" x2="7" y2="14"/><line x1="9" y1="8" x2="15" y2="8"/><line x1="17" y1="16" x2="23" y2="16"/>
+              </svg>
+            </div>
+            <h3 class="vp-title">Signal, not noise</h3>
+            <p class="vp-body">You configure the rules once. ReviewPilot tracks which comments your team dismisses and stops surfacing them — so every post is worth reading.</p>
+          </article>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         How It Works
+         ============================================================ -->
+    <section class="how-it-works section-pad" id="how-it-works" aria-labelledby="hiw-heading">
+      <div class="container">
+        <header class="section-header">
+          <span class="section-eyebrow" aria-hidden="true">How it works</span>
+          <h2 id="hiw-heading" class="section-title">From install to first review in five minutes.</h2>
+          <p class="section-subtitle">No model training. No data pipeline to configure. Connect your repo and go.</p>
+        </header>
+
+        <ol class="steps-grid" aria-label="Three steps to get started with ReviewPilot">
+
+          <li class="step">
+            <h3 class="step-title">Install the GitHub App</h3>
+            <p class="step-body">Authorize ReviewPilot on the repos you choose. Read-only access to code, write access only to PR comments. Nothing reaches outside your request.</p>
+          </li>
+
+          <li class="step">
+            <h3 class="step-title">Open a pull request</h3>
+            <p class="step-body">ReviewPilot analyzes the diff the moment a PR is opened or updated. No CLI commands, no CI step to wire up, no YAML file to write.</p>
+          </li>
+
+          <li class="step">
+            <h3 class="step-title">Act on targeted feedback</h3>
+            <p class="step-body">Inline comments appear on the exact lines that matter — labelled by issue class and severity, each with a suggested fix. Merge with confidence.</p>
+          </li>
+
+        </ol>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         Feature Deep-Dive
+         ============================================================ -->
+    <section class="feature-section section-pad" aria-labelledby="feature-heading">
+      <div class="container">
+        <div class="feature-grid">
+
+          <!-- Feature mock: rule config panel -->
+          <div class="feature-mock" role="img" aria-label="ReviewPilot rule configuration panel. Three panels show customizable rules: SQL injection marked as critical and blocking, missing null-check marked as warning, and unused variable marked as off. A Save changes button is visible at the bottom.">
+            <svg width="100%" height="100%" viewBox="0 0 560 420" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true" focusable="false">
+              <rect width="560" height="420" fill="#0F172A"/>
+              <!-- Sidebar -->
+              <rect width="176" height="420" fill="#1E293B"/>
+              <rect x="16" y="22" width="144" height="12" rx="3" fill="#334155"/>
+              <rect x="16" y="40" width="96" height="8" rx="2" fill="#475569"/>
+              <!-- Sidebar nav items -->
+              <rect x="0" y="66" width="176" height="32" fill="#2563EB" opacity="0.14"/>
+              <rect x="16" y="76" width="8" height="8" rx="1.5" fill="#2563EB" opacity="0.8"/>
+              <rect x="30" y="76" width="76" height="8" rx="2" fill="#CBD5E1"/>
+              <rect x="16" y="110" width="8" height="8" rx="1.5" fill="#475569"/>
+              <rect x="30" y="110" width="60" height="8" rx="2" fill="#475569"/>
+              <rect x="16" y="134" width="8" height="8" rx="1.5" fill="#475569"/>
+              <rect x="30" y="134" width="88" height="8" rx="2" fill="#475569"/>
+              <rect x="16" y="158" width="8" height="8" rx="1.5" fill="#475569"/>
+              <rect x="30" y="158" width="64" height="8" rx="2" fill="#475569"/>
+              <!-- Main panel -->
+              <rect x="192" y="16" width="352" height="388" rx="8" fill="#1E293B"/>
+              <rect x="208" y="32" width="200" height="12" rx="3" fill="#334155"/>
+              <rect x="208" y="50" width="140" height="8" rx="2" fill="#475569"/>
+              <!-- Rule row 1 — critical / blocking -->
+              <rect x="208" y="72" width="320" height="52" rx="6" fill="#0F172A"/>
+              <rect x="224" y="84" width="150" height="9" rx="2" fill="#CBD5E1"/>
+              <rect x="224" y="98" width="96" height="7" rx="2" fill="#475569"/>
+              <rect x="388" y="85" width="52" height="14" rx="4" fill="#EF4444" opacity="0.15"/>
+              <rect x="392" y="89" width="44" height="6" rx="2" fill="#EF4444" opacity="0.6"/>
+              <rect x="460" y="84" width="36" height="16" rx="8" fill="#EF4444" opacity="0.25"/>
+              <rect x="464" y="88" width="12" height="8" rx="4" fill="#EF4444"/>
+              <!-- Rule row 2 — warning / on -->
+              <rect x="208" y="136" width="320" height="52" rx="6" fill="#0F172A"/>
+              <rect x="224" y="148" width="170" height="9" rx="2" fill="#CBD5E1"/>
+              <rect x="224" y="162" width="80" height="7" rx="2" fill="#475569"/>
+              <rect x="388" y="149" width="52" height="14" rx="4" fill="#F59E0B" opacity="0.15"/>
+              <rect x="392" y="153" width="44" height="6" rx="2" fill="#F59E0B" opacity="0.6"/>
+              <rect x="460" y="148" width="36" height="16" rx="8" fill="#10B981" opacity="0.25"/>
+              <rect x="472" y="152" width="12" height="8" rx="4" fill="#10B981"/>
+              <!-- Rule row 3 — off -->
+              <rect x="208" y="200" width="320" height="52" rx="6" fill="#0F172A"/>
+              <rect x="224" y="212" width="128" height="9" rx="2" fill="#CBD5E1"/>
+              <rect x="224" y="226" width="104" height="7" rx="2" fill="#475569"/>
+              <rect x="388" y="213" width="40" height="14" rx="4" fill="#334155"/>
+              <rect x="392" y="217" width="32" height="6" rx="2" fill="#475569"/>
+              <rect x="460" y="212" width="36" height="16" rx="8" fill="#334155"/>
+              <rect x="464" y="216" width="12" height="8" rx="4" fill="#475569"/>
+              <!-- Rule row 4 — info -->
+              <rect x="208" y="264" width="320" height="52" rx="6" fill="#0F172A"/>
+              <rect x="224" y="276" width="190" height="9" rx="2" fill="#CBD5E1"/>
+              <rect x="224" y="290" width="112" height="7" rx="2" fill="#475569"/>
+              <rect x="388" y="277" width="44" height="14" rx="4" fill="#2563EB" opacity="0.15"/>
+              <rect x="392" y="281" width="36" height="6" rx="2" fill="#2563EB" opacity="0.6"/>
+              <rect x="460" y="276" width="36" height="16" rx="8" fill="#10B981" opacity="0.25"/>
+              <rect x="472" y="280" width="12" height="8" rx="4" fill="#10B981"/>
+              <!-- Action bar -->
+              <rect x="208" y="344" width="128" height="36" rx="6" fill="#2563EB"/>
+              <rect x="228" y="356" width="88" height="12" rx="3" fill="white" opacity="0.85"/>
+              <rect x="348" y="344" width="88" height="36" rx="6" fill="#0F172A" stroke="#334155" stroke-width="1"/>
+              <rect x="360" y="356" width="64" height="12" rx="3" fill="#475569"/>
+            </svg>
+          </div>
+
+          <div class="feature-copy">
+            <span class="section-eyebrow" aria-hidden="true">Customization</span>
+            <h2 id="feature-heading" class="section-title">Your rules. Your standards. Zero config drift.</h2>
+            <p class="feature-desc">
+              Every team has hard lines and deliberate trade-offs they've learned to live with. ReviewPilot lets you encode both — without writing a YAML spec the size of a novel.
+            </p>
+
+            <ul class="feature-list" role="list">
+
+              <li class="feature-item">
+                <span class="check-dot" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" focusable="false">
+                    <path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+                <span class="feature-item-text"><strong>Per-repo rule sets</strong> — different standards for your public API versus your internal admin tooling.</span>
+              </li>
+
+              <li class="feature-item">
+                <span class="check-dot" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" focusable="false">
+                    <path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+                <span class="feature-item-text"><strong>Feedback on feedback</strong> — mark a comment "not relevant" once, and that pattern won't resurface on your repo.</span>
+              </li>
+
+              <li class="feature-item">
+                <span class="check-dot" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" focusable="false">
+                    <path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+                <span class="feature-item-text"><strong>Merge blocking</strong> — block PRs on critical issues, surface warnings without blocking, or silence style notes entirely.</span>
+              </li>
+
+              <li class="feature-item">
+                <span class="check-dot" aria-hidden="true">
+                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" focusable="false">
+                    <path d="M2 6l3 3 5-5" stroke="#fff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                </span>
+                <span class="feature-item-text"><strong>Works beside your linter</strong> — ReviewPilot adds a judgment layer on top of ESLint, Ruff, or Rubocop, not a replacement for them.</span>
+              </li>
+
+            </ul>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         Testimonial
+         ============================================================ -->
+    <section class="testimonial-section section-pad" aria-labelledby="testimonial-label">
+      <div class="container">
+        <figure class="testimonial-wrap">
+          <h2 id="testimonial-label" class="sr-only">Customer testimonial</h2>
+          <span class="quote-glyph" aria-hidden="true">"</span>
+          <blockquote>
+            <p class="testimonial-text">
+              "We used to spend 40% of review time re-explaining the same three classes of bugs. ReviewPilot handles every one of them. Our senior engineers now actually review architecture — not whether someone forgot to close a database cursor."
+            </p>
+          </blockquote>
+          <figcaption class="testimonial-attribution">
+            <span class="attr-name">Priya Nair</span>
+            <span class="attr-role">VP of Engineering, Stackform</span>
+          </figcaption>
+        </figure>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         FAQ
+         ============================================================ -->
+    <section class="faq-section section-pad" id="faq" aria-labelledby="faq-heading">
+      <div class="container">
+        <header class="section-header">
+          <span class="section-eyebrow" aria-hidden="true">FAQ</span>
+          <h2 id="faq-heading" class="section-title">The questions we hear before people sign up.</h2>
+        </header>
+
+        <div class="faq-list">
+
+          <details class="faq-item">
+            <summary class="faq-q">
+              Does ReviewPilot train on my private code?
+              <span class="faq-icon" aria-hidden="true">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" focusable="false">
+                  <path d="M1 5h8M5 1v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </span>
+            </summary>
+            <div class="faq-answer">
+              <p>No. Your code is analyzed in an isolated environment and never retained or used to update any model. Only the diff and your repo's rule config are sent to the model — nothing from the rest of your codebase. Read the full details in our <a href="#privacy">privacy policy</a>.</p>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-q">
+              How does it compare to GitHub Copilot for PRs or CodeRabbit?
+              <span class="faq-icon" aria-hidden="true">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" focusable="false">
+                  <path d="M1 5h8M5 1v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </span>
+            </summary>
+            <div class="faq-answer">
+              <p>ReviewPilot is built around reducing false positives. We track which comments your team dismisses and suppress that pattern going forward. Teams on a mature repo report 90%+ of our comments are actionable, versus 40–60% for generic tools. We also support merge-blocking on critical issues natively, which most alternatives require external CI logic to replicate.</p>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-q">
+              Which languages and frameworks do you support?
+              <span class="faq-icon" aria-hidden="true">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" focusable="false">
+                  <path d="M1 5h8M5 1v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </span>
+            </summary>
+            <div class="faq-answer">
+              <p>Python, JavaScript/TypeScript, Go, Ruby, Java, Rust, and C# have first-class support with language-specific security rules and framework awareness (Django, Express, Rails, Spring, etc.). PHP, Kotlin, and Swift are in beta. All other languages receive structural and logic analysis without framework-specific rules.</p>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-q">
+              We already run a thorough human review process. Why add this?
+              <span class="faq-icon" aria-hidden="true">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" focusable="false">
+                  <path d="M1 5h8M5 1v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </span>
+            </summary>
+            <div class="faq-answer">
+              <p>Human reviewers excel at judgment calls — architecture, naming, readability. They're inconsistent at mechanical checks when tired or under time pressure. ReviewPilot owns the mechanical layer so your reviewers can focus where their judgment actually moves the codebase forward. The typical result is faster reviews, not fewer people doing them.</p>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-q">
+              Does it work with GitLab or Bitbucket?
+              <span class="faq-icon" aria-hidden="true">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" focusable="false">
+                  <path d="M1 5h8M5 1v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </span>
+            </summary>
+            <div class="faq-answer">
+              <p>GitLab Cloud and GitLab self-managed are available now in public beta. Bitbucket Cloud is on the roadmap for Q3 2026. GitHub Cloud and GitHub Enterprise Server 3.10+ are fully supported today.</p>
+            </div>
+          </details>
+
+          <details class="faq-item">
+            <summary class="faq-q">
+              What happens when the 14-day trial ends?
+              <span class="faq-icon" aria-hidden="true">
+                <svg width="10" height="10" viewBox="0 0 10 10" fill="none" focusable="false">
+                  <path d="M1 5h8M5 1v8" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/>
+                </svg>
+              </span>
+            </summary>
+            <div class="faq-answer">
+              <p>You'll be prompted to choose a plan. If you do nothing, the account moves to the free tier: unlimited reviews on public repos, up to 3 private repos, 100 PR reviews per month. No card is charged and no service is interrupted. Paid plans for teams start at $18 per seat per month.</p>
+            </div>
+          </details>
+
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================================================
+         Final CTA Band
+         ============================================================ -->
+    <section class="cta-band section-pad" id="pricing" aria-labelledby="cta-heading">
+      <div class="container">
+        <div class="cta-band-inner">
+          <h2 id="cta-heading" class="cta-band-title">Ship code you're proud of, faster.</h2>
+          <p class="cta-band-sub">Join 4,800+ repos that stop the same bugs from reaching production — pull request after pull request.</p>
+          <a href="#trial" class="btn btn-primary btn-lg">Start free — no credit card</a>
+          <p class="cta-band-note">Free forever for open-source. 14-day trial for private repos. Cancel anytime, no questions asked.</p>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- ============================================================
+       Footer
+       ============================================================ -->
+  <footer class="site-footer" role="contentinfo">
+    <div class="container">
+      <div class="footer-inner">
+
+        <a href="/" class="footer-logo" aria-label="ReviewPilot — home">ReviewPilot</a>
+
+        <nav aria-label="Footer navigation">
+          <ul class="footer-links" role="list">
+            <li><a href="#privacy">Privacy</a></li>
+            <li><a href="#terms">Terms</a></li>
+            <li><a href="#security">Security</a></li>
+            <li><a href="#docs">Docs</a></li>
+            <li><a href="#status">Status</a></li>
+            <li><a href="#blog">Blog</a></li>
+          </ul>
+        </nav>
+
+        <p class="footer-copy">
+          <small>&copy; 2026 ReviewPilot, Inc. All rights reserved.</small>
+        </p>
+
+      </div>
+    </div>
+  </footer>
+
+</body>
+</html>
