@@ -1,0 +1,248 @@
+/* =========================================================================
+   Rural Racer — styles + design tokens
+   The palette lives here as CSS custom properties. game.js reads the same
+   values from its own constants block, so re-theming happens in one place.
+   ========================================================================= */
+
+:root {
+  /* --- Palette (rural, clean/flat) --- */
+  --grass:      #5aa457;
+  --grass-dark: #47823f;
+  --dirt:       #b6895b;
+  --dirt-edge:  #94663c;
+  --sky:        #dff0e6;   /* page chrome behind the canvas */
+  --kerb-a:     #e5533c;
+  --kerb-b:     #f7f4ef;
+  --car:        #2f7fd6;
+  --car-accent: #ffd34e;
+  --ink:        #12241d;   /* HUD text */
+  --panel:      rgba(255, 255, 255, 0.82);
+
+  /* --- Spacing / type --- */
+  --gap: 12px;
+  --radius: 12px;
+  --ui-font: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  /* Tabular figures so timers/speed never jitter the layout (PLAN §5 I3). */
+  --num-font: ui-monospace, "SF Mono", "Consolas", monospace;
+}
+
+* { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+}
+
+body {
+  min-height: 100%;
+  display: grid;
+  place-items: center;
+  background: var(--sky);            /* letterbox chrome around the stage */
+  font-family: var(--ui-font);
+  color: var(--ink);
+  /* Respect the system light/dark preference for the page chrome (PLAN §5 J4). */
+}
+@media (prefers-color-scheme: dark) {
+  body { background: #1a2620; }
+}
+
+/* Stage keeps the world's 3:2 aspect ratio and letterboxes responsively. */
+.stage {
+  position: relative;
+  width: min(96vw, calc(96vh * 3 / 2));
+  aspect-ratio: 3 / 2;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.22);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+#game {
+  display: block;
+  width: 100%;
+  height: 100%;
+  /* Page hygiene: no text selection / image drag on the play surface (PLAN §5 M1). */
+  user-select: none;
+  -webkit-user-select: none;
+  touch-action: none;
+}
+
+/* Pointer has no job during a race; it returns on the title and pause screens
+   where it does (PLAN §5 M3). Toggled by updateScreens() from game state. */
+#game.is-playing { cursor: none; }
+
+/* --- HUD overlay (sits above the canvas) --- */
+.hud {
+  position: absolute;
+  inset: 0;
+  padding: var(--gap);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  pointer-events: none;             /* clicks fall through to the game */
+}
+
+.hud__row {
+  display: flex;
+  gap: var(--gap);
+  /* Panels keep a fixed type size while the stage scales with the viewport, so
+     on a narrow window four panels wrap rather than overflowing the stage. */
+  flex-wrap: wrap;
+}
+.hud__row--top    { justify-content: center; }
+/* LIVES sits left, SPEED right — the two things you glance at while driving. */
+.hud__row--bottom { justify-content: space-between; }
+
+.hud__panel {
+  background: var(--panel);
+  border-radius: var(--radius);
+  padding: 6px 14px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  line-height: 1.15;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+}
+
+.hud__label {
+  font-size: 11px;
+  letter-spacing: 0.12em;
+  opacity: 0.65;
+}
+
+.hud__value {
+  font-family: var(--num-font);
+  font-size: 24px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  min-width: 3ch;                   /* fixed width so digits don't shift (I4) */
+  text-align: center;
+}
+.hud__value--time { min-width: 7ch; }   /* reserve room for m:ss.cc (I4) */
+
+/* --- Lap-complete toast --- */
+.toast {
+  position: absolute;
+  top: 74px;
+  left: 50%;
+  transform: translate(-50%, -12px);
+  background: var(--ink);
+  color: #fff;
+  padding: 10px 20px;
+  border-radius: 999px;
+  font-size: 16px;
+  font-weight: 600;
+  white-space: nowrap;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.28);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s ease, transform 0.3s ease;
+}
+.toast.is-show {
+  opacity: 1;
+  transform: translate(-50%, 0);
+}
+.toast--best {
+  background: linear-gradient(90deg, #e5533c, #ff8a3c);
+}
+.toast__best {
+  margin-left: 8px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast { transition: opacity 0.15s linear; transform: translate(-50%, 0); }
+  .toast.is-show { transform: translate(-50%, 0); }
+}
+
+/* --- Lifecycle screens (title / pause) --- */
+.screens { position: absolute; inset: 0; pointer-events: none; }
+
+.screen {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 24px;
+  background: rgba(18, 36, 29, 0.55);
+  backdrop-filter: blur(2px);
+  color: #fff;
+}
+.screen.is-hidden { display: none; }
+
+.screen__title {
+  margin: 0;
+  font-size: clamp(34px, 7vw, 66px);
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-shadow: 0 3px 14px rgba(0, 0, 0, 0.5);
+}
+.screen__cta { margin: 0; font-size: 18px; }
+.screen__controls { margin: 0; font-size: 14px; opacity: 0.85; }
+.screen__result { margin: 0; font-size: 17px; opacity: 0.92; }
+.screen__result strong { font-family: var(--num-font); font-variant-numeric: tabular-nums; }
+
+kbd {
+  background: #fff;
+  color: var(--ink);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-family: var(--num-font);
+  font-weight: 700;
+  font-size: 0.9em;
+}
+
+/* --- Countdown --- */
+.countdown {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--num-font);
+  font-weight: 800;
+  font-size: clamp(64px, 16vw, 150px);
+  color: #fff;
+  text-shadow: 0 4px 20px rgba(0, 0, 0, 0.55);
+  pointer-events: none;
+}
+.countdown.is-hidden { display: none; }
+.countdown.pop { animation: pop 0.45s ease; }
+
+@keyframes pop {
+  0%   { transform: scale(0.4);  opacity: 0; }
+  40%  { transform: scale(1.15); opacity: 1; }
+  100% { transform: scale(1);    opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .countdown.pop { animation: none; }
+  .screen { backdrop-filter: none; }
+}
+
+/* --- First-time controls hint --- */
+.hint {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  transform: translateX(-50%);
+  background: var(--panel);
+  color: var(--ink);
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 14px;
+  white-space: nowrap;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+  transition: opacity 0.6s ease;
+  pointer-events: none;
+}
+.hint.is-hidden { opacity: 0; }
+
+/* Motion-sensitive players: drop the fade to an instant change (PLAN §5 J1). */
+@media (prefers-reduced-motion: reduce) {
+  .hint { transition: none; }
+}

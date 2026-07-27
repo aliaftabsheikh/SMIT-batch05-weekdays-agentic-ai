@@ -1,0 +1,799 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+<title>Snake</title>
+<style>
+  :root {
+    --bg: #0a0a0f;
+    --panel: #16162a;
+    --grid: #1e1e38;
+    --accent: #6c63ff;
+    --accent-2: #ff6584;
+    --food: #ff6584;
+    --snake-head: #8b83ff;
+    --snake-body: #6c63ff;
+    --text: #e8e8f5;
+    --text-dim: #9a9ab5;
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html, body {
+    height: 100%;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    /* Invariant 14: no scroll/zoom on the page while playing */
+    overscroll-behavior: none;
+  }
+
+  body {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    min-height: 100%;
+  }
+
+  .app {
+    width: 100%;
+    max-width: 560px;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+
+  .topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+  }
+
+  .title {
+    font-size: 22px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .scores {
+    display: flex;
+    gap: 18px;
+    align-items: center;
+  }
+
+  .score-box {
+    text-align: right;
+    line-height: 1.1;
+  }
+  .score-box .label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+  }
+  .score-box .value {
+    font-size: 20px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .mute-btn {
+    background: var(--panel);
+    border: 1px solid var(--grid);
+    color: var(--text);
+    width: 38px;
+    height: 38px;
+    border-radius: 10px;
+    cursor: pointer;
+    font-size: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: border-color 0.15s, transform 0.05s;
+  }
+  .mute-btn:hover { border-color: var(--accent); }
+  .mute-btn:active { transform: scale(0.94); }
+
+  .stage {
+    position: relative;
+    width: 100%;
+    /* Square play area; grid coords are independent of pixel size */
+    aspect-ratio: 1 / 1;
+    background: var(--panel);
+    border: 1px solid var(--grid);
+    border-radius: 16px;
+    overflow: hidden;
+    /* Invariant 14: block native touch gestures (scroll/pinch) over the board */
+    touch-action: none;
+  }
+
+  canvas {
+    display: block;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* Death flash overlay (juice) */
+  .flash {
+    position: absolute;
+    inset: 0;
+    background: var(--accent-2);
+    opacity: 0;
+    pointer-events: none;
+  }
+  .flash.on { animation: flash 0.28s ease-out; }
+  @keyframes flash {
+    0% { opacity: 0.55; }
+    100% { opacity: 0; }
+  }
+
+  /* Screen shake on death (juice) — applied to .stage */
+  .stage.shake { animation: shake 0.28s ease-in-out; }
+  @keyframes shake {
+    0%,100% { transform: translate(0,0); }
+    20% { transform: translate(-5px, 3px); }
+    40% { transform: translate(5px, -3px); }
+    60% { transform: translate(-4px, -2px); }
+    80% { transform: translate(4px, 2px); }
+  }
+
+  .overlay {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    gap: 10px;
+    padding: 24px;
+    background: rgba(10, 10, 15, 0.72);
+    backdrop-filter: blur(3px);
+  }
+  .overlay.hidden { display: none; }
+  .overlay h1 {
+    font-size: clamp(26px, 8vw, 40px);
+    font-weight: 800;
+  }
+  .overlay .accent {
+    background: linear-gradient(90deg, var(--accent), var(--accent-2));
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+  .overlay p { color: var(--text-dim); font-size: 14px; line-height: 1.6; }
+  .overlay .prompt {
+    color: var(--text);
+    font-size: 15px;
+    font-weight: 600;
+    margin-top: 6px;
+    animation: pulse 1.4s ease-in-out infinite;
+  }
+  @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.45; } }
+
+  .legend {
+    display: grid;
+    grid-template-columns: auto auto;
+    gap: 4px 16px;
+    font-size: 12px;
+    color: var(--text-dim);
+    margin-top: 8px;
+  }
+  .legend b { color: var(--text); font-weight: 600; }
+
+  .hint {
+    text-align: center;
+    font-size: 12px;
+    color: var(--text-dim);
+    min-height: 16px;
+  }
+
+  @media (max-width: 420px) {
+    .title { font-size: 18px; }
+    .score-box .value { font-size: 17px; }
+  }
+</style>
+</head>
+<body>
+  <div class="app">
+    <div class="topbar">
+      <div class="title">SNAKE</div>
+      <div class="scores">
+        <div class="score-box">
+          <div class="label">Score</div>
+          <div class="value" id="score">0</div>
+        </div>
+        <div class="score-box">
+          <div class="label">Best</div>
+          <div class="value" id="high">0</div>
+        </div>
+        <button class="mute-btn" id="mute" title="Toggle sound" aria-label="Toggle sound">🔇</button>
+      </div>
+    </div>
+
+    <div class="stage" id="stage">
+      <canvas id="game"></canvas>
+      <div class="flash" id="flash"></div>
+      <div class="overlay" id="overlay">
+        <!-- Content injected per game state -->
+      </div>
+    </div>
+
+    <div class="hint" id="hint">Arrows / WASD to move · Space or P to pause</div>
+  </div>
+
+<script>
+"use strict";
+(function () {
+  // ============================================================
+  // CONFIG — all tunables grouped here (behavior changes live here)
+  // ============================================================
+  const GRID_SIZE     = 20;    // cells per side (20x20 board)
+  const INITIAL_SPEED = 140;   // ms per simulation tick at score 0
+  const MAX_SPEED     = 70;    // fastest tick interval (ms) — floor, keeps it playable
+  const SPEED_STEP    = 4;     // ms shaved off the tick interval per food eaten
+  const WRAP_AROUND   = false; // false = classic die-on-wall; true = wrap to opposite edge
+  const INPUT_BUFFER_MAX = 2;  // max queued turns (Invariant 2)
+  const START_LENGTH  = 3;
+
+  const COLORS = {
+    grid:      getVar('--grid'),
+    food:      getVar('--food'),
+    snakeHead: getVar('--snake-head'),
+    snakeBody: getVar('--snake-body'),
+  };
+  function getVar(name) {
+    return getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  }
+
+  // Game states (plus WIN outcome routed through GAME_OVER-style overlay)
+  const STATE = { START: 'START', PLAYING: 'PLAYING', PAUSED: 'PAUSED', OVER: 'OVER', WIN: 'WIN' };
+
+  // Directions as unit vectors. Opposite check uses vector sum == 0.
+  const DIR = {
+    up:    { x: 0, y: -1 },
+    down:  { x: 0, y: 1 },
+    left:  { x: -1, y: 0 },
+    right: { x: 1, y: 0 },
+  };
+
+  // ============================================================
+  // DOM
+  // ============================================================
+  const canvas  = document.getElementById('game');
+  const ctx     = canvas.getContext('2d');
+  const stageEl = document.getElementById('stage');
+  const flashEl = document.getElementById('flash');
+  const overlay = document.getElementById('overlay');
+  const scoreEl = document.getElementById('score');
+  const highEl  = document.getElementById('high');
+  const hintEl  = document.getElementById('hint');
+  const muteBtn = document.getElementById('mute');
+
+  // ============================================================
+  // STATE
+  // ============================================================
+  let state = STATE.START;
+  let snake = [];              // array of {x,y}; index 0 = head
+  let occupied = new Set();    // cell keys currently occupied by snake (fast collision lookup)
+  let food = null;             // {x,y} or null
+  let dir = DIR.right;         // direction to APPLY next tick
+  let appliedDir = DIR.right;  // direction actually applied LAST tick (Invariant 1 reference)
+  let inputQueue = [];         // buffered turns (Invariant 2)
+  let score = 0;
+  let highScore = 0;
+  let tickInterval = INITIAL_SPEED;
+
+  // Loop control
+  let rafId = null;            // the ONE loop handle (Invariant 8: never stack loops)
+  let lastTime = 0;
+  let accumulator = 0;
+
+  // Juice
+  let eatAnim = 0;             // 0..1 countdown for food pop
+  let foodPulse = 0;          // running phase for gentle food pulse
+
+  // Audio (muted by default; no autoplay)
+  let muted = true;
+  let audioCtx = null;
+
+  // Rendering geometry
+  let pixelSize = 0;           // logical px size of the (square) canvas
+  let cell = 0;                // logical px per cell
+
+  const key = (x, y) => x + ',' + y;
+
+  // ============================================================
+  // HIGH SCORE — localStorage with graceful in-memory fallback (Invariant 12)
+  // ============================================================
+  const HS_KEY = 'snake_highscore';
+  function loadHighScore() {
+    try {
+      const v = window.localStorage.getItem(HS_KEY);
+      return v ? parseInt(v, 10) || 0 : 0;
+    } catch (e) {
+      return 0; // private mode / blocked — fall back to in-memory
+    }
+  }
+  function saveHighScore(v) {
+    try { window.localStorage.setItem(HS_KEY, String(v)); }
+    catch (e) { /* ignore — keep in-memory only, never throw */ }
+  }
+
+  // ============================================================
+  // CANVAS SIZING — devicePixelRatio for crispness + responsive (Invariant 13)
+  // ============================================================
+  function resizeCanvas() {
+    const rect = stageEl.getBoundingClientRect();
+    const logical = Math.floor(Math.min(rect.width, rect.height));
+    const dpr = window.devicePixelRatio || 1;
+    pixelSize = logical;
+    cell = logical / GRID_SIZE;         // grid stays exact regardless of pixel size
+    canvas.width  = Math.round(logical * dpr);
+    canvas.height = Math.round(logical * dpr);
+    canvas.style.width = logical + 'px';
+    canvas.style.height = logical + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0); // draw in logical px
+    render();                            // repaint immediately so resize never distorts
+  }
+
+  // ============================================================
+  // FOOD — spawn only in free cells; board full => WIN (Invariants 6,7)
+  // ============================================================
+  function spawnFood() {
+    const total = GRID_SIZE * GRID_SIZE;
+    // Board full: no free cell exists -> WIN, never loop searching (Invariant 7)
+    if (snake.length >= total) { food = null; win(); return; }
+
+    // Build the free-cell list (no random-retry-until-empty) (Invariant 6/efficient spawn)
+    const free = [];
+    for (let y = 0; y < GRID_SIZE; y++) {
+      for (let x = 0; x < GRID_SIZE; x++) {
+        if (!occupied.has(key(x, y))) free.push({ x, y });
+      }
+    }
+    if (free.length === 0) { food = null; win(); return; }
+    food = free[(Math.random() * free.length) | 0];
+  }
+
+  // ============================================================
+  // INPUT — queue turns, validate against APPLIED direction (Invariants 1,2)
+  // ============================================================
+  function queueDirection(nd) {
+    if (inputQueue.length >= INPUT_BUFFER_MAX) return;
+    // Validate against the last thing already queued, else the last applied dir.
+    // This prevents a fast Up+Right sequence from sneaking a 180° through the buffer.
+    const ref = inputQueue.length ? inputQueue[inputQueue.length - 1] : appliedDir;
+    if (nd.x === ref.x && nd.y === ref.y) return;           // ignore same-direction spam
+    if (nd.x === -ref.x && nd.y === -ref.y) return;         // Invariant 1: reject 180° reversal
+    inputQueue.push(nd);
+  }
+
+  // ============================================================
+  // SIMULATION — one fixed step of game logic
+  // ============================================================
+  function step() {
+    // Consume ONE queued turn per tick, validated against the applied direction.
+    if (inputQueue.length) {
+      const nd = inputQueue.shift();
+      // Re-check vs appliedDir (guards the first buffered turn too) (Invariant 1)
+      if (!(nd.x === -appliedDir.x && nd.y === -appliedDir.y)) {
+        dir = nd;
+      }
+    }
+
+    const head = snake[0];
+    let nx = head.x + dir.x;
+    let ny = head.y + dir.y;
+
+    // Wall vs wrap (Invariants 8,9)
+    if (WRAP_AROUND) {
+      nx = (nx + GRID_SIZE) % GRID_SIZE;
+      ny = (ny + GRID_SIZE) % GRID_SIZE;
+    } else if (nx < 0 || ny < 0 || nx >= GRID_SIZE || ny >= GRID_SIZE) {
+      return gameOver(); // classic: death exactly at the boundary
+    }
+
+    // Will we eat on THIS tick? Decide before collision so tail-follow is correct.
+    const willEat = food && nx === food.x && ny === food.y;
+
+    // Tail-follow rule (Invariant 3): the tail tip vacates its cell this tick
+    // UNLESS we eat (then the tail doesn't move -> moving into it is a collision).
+    const tail = snake[snake.length - 1];
+    const tailKey = key(tail.x, tail.y);
+
+    // Self-collision test against occupied cells. Exclude the vacating tail tip
+    // only when we are NOT eating. (Length floor is implicit: with length < 4 the
+    // head can't reach any body cell in one step, so no false positive — Invariant 4.)
+    const targetKey = key(nx, ny);
+    const hitsSelf = occupied.has(targetKey) && !(targetKey === tailKey && !willEat);
+    if (hitsSelf) return gameOver();
+
+    // Advance: add new head.
+    const newHead = { x: nx, y: ny };
+    snake.unshift(newHead);
+    occupied.add(targetKey);
+
+    if (willEat) {
+      score += 1;
+      eatAnim = 1;                                   // trigger pop (juice)
+      tickInterval = Math.max(MAX_SPEED, INITIAL_SPEED - score * SPEED_STEP); // ramp+cap (Invariant: difficulty)
+      updateScore();
+      beep(660, 0.05);
+      spawnFood();                                   // may trigger WIN if board full
+    } else {
+      // Normal move: drop the tail (it vacates its cell).
+      const removed = snake.pop();
+      occupied.delete(key(removed.x, removed.y));
+    }
+
+    // Record what we actually applied THIS tick — the reference for next tick's turn validation.
+    appliedDir = dir;
+  }
+
+  // ============================================================
+  // GAME LOOP — fixed timestep, decoupled from frame rate (Invariant: fixed timestep)
+  // ============================================================
+  function loop(now) {
+    // Single-loop guarantee: this function only ever runs via the one rafId chain.
+    if (state !== STATE.PLAYING) { rafId = null; return; } // stop cleanly; no orphan loop
+
+    const dt = now - lastTime;
+    lastTime = now;
+    // Clamp dt so returning from a background tab / long pause can't spiral catch-up ticks.
+    accumulator += Math.min(dt, 250);
+
+    let stepped = false;
+    while (accumulator >= tickInterval) {
+      accumulator -= tickInterval;
+      step();
+      stepped = true;
+      if (state !== STATE.PLAYING) break; // step() may have ended the game
+    }
+
+    // Juice timers advance in real time (frame-rate independent enough for effects)
+    foodPulse += dt / 1000;
+    if (eatAnim > 0) eatAnim = Math.max(0, eatAnim - dt / 160);
+
+    render();
+
+    if (state === STATE.PLAYING) {
+      rafId = requestAnimationFrame(loop);
+    } else {
+      rafId = null;
+    }
+  }
+
+  function startLoop() {
+    // Invariant 8: cancel any existing loop before starting a new one (no double-speed).
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+    lastTime = performance.now();
+    accumulator = 0;
+    rafId = requestAnimationFrame(loop);
+  }
+
+  function stopLoop() {
+    if (rafId !== null) { cancelAnimationFrame(rafId); rafId = null; }
+  }
+
+  // ============================================================
+  // STATE TRANSITIONS
+  // ============================================================
+  function resetGame() {
+    // Full reset (Invariant 9): snake, direction, INPUT QUEUE, score, speed, state.
+    const mid = Math.floor(GRID_SIZE / 2);
+    snake = [];
+    occupied = new Set();
+    for (let i = 0; i < START_LENGTH; i++) {
+      const c = { x: mid - i, y: mid };
+      snake.push(c);
+      occupied.add(key(c.x, c.y));
+    }
+    dir = DIR.right;
+    appliedDir = DIR.right;
+    inputQueue = [];            // no stale queued input carries over (Invariant 9)
+    score = 0;
+    tickInterval = INITIAL_SPEED;
+    eatAnim = 0;
+    updateScore();
+    spawnFood();
+  }
+
+  function startNewGame() {
+    resetGame();
+    state = STATE.PLAYING;
+    hideOverlay();
+    setHint('Arrows / WASD · Space or P to pause');
+    startLoop(); // startLoop cancels any prior loop first — restart-spam safe (Invariant 8,16)
+  }
+
+  function pauseGame() {
+    if (state !== STATE.PLAYING) return;
+    state = STATE.PAUSED;
+    stopLoop();
+    showOverlay(overlayPaused());
+    setHint('Paused — press Space or P to resume');
+  }
+
+  function resumeGame() {
+    if (state !== STATE.PAUSED) return;
+    state = STATE.PLAYING;
+    hideOverlay();
+    setHint('Arrows / WASD · Space or P to pause');
+    startLoop(); // resets accumulator -> no catch-up jump after pause
+  }
+
+  function gameOver() {
+    state = STATE.OVER;
+    stopLoop();
+    commitHighScore();
+    triggerDeathJuice();
+    beep(140, 0.25);
+    showOverlay(overlayGameOver());
+    setHint('Press Enter or Space to play again');
+    return; // callers use `return gameOver()` to abort the current step
+  }
+
+  function win() {
+    state = STATE.WIN;
+    stopLoop();
+    commitHighScore();
+    beep(880, 0.15);
+    showOverlay(overlayWin());
+    setHint('Press Enter or Space to play again');
+  }
+
+  function commitHighScore() {
+    if (score > highScore) {
+      highScore = score;
+      highEl.textContent = highScore;
+      saveHighScore(highScore);
+    }
+  }
+
+  // ============================================================
+  // RENDER
+  // ============================================================
+  function render() {
+    if (!pixelSize) return;
+    ctx.clearRect(0, 0, pixelSize, pixelSize);
+
+    // Subtle grid lines
+    ctx.strokeStyle = COLORS.grid;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    for (let i = 1; i < GRID_SIZE; i++) {
+      const p = Math.round(i * cell) + 0.5;
+      ctx.moveTo(p, 0); ctx.lineTo(p, pixelSize);
+      ctx.moveTo(0, p); ctx.lineTo(pixelSize, p);
+    }
+    ctx.stroke();
+
+    // Food with gentle pulse (juice)
+    if (food) {
+      const pulse = 1 + Math.sin(foodPulse * 4) * 0.08;
+      drawCell(food.x, food.y, COLORS.food, 0.30, pulse);
+    }
+
+    // Snake — head distinct from body (Invariant: readability)
+    for (let i = snake.length - 1; i >= 0; i--) {
+      const seg = snake[i];
+      const isHead = i === 0;
+      let scale = 1;
+      if (isHead && eatAnim > 0) scale = 1 + eatAnim * 0.18; // pop on eat
+      drawCell(seg.x, seg.y, isHead ? COLORS.snakeHead : COLORS.snakeBody, 0.16, scale);
+    }
+  }
+
+  function drawCell(gx, gy, color, radiusFactor, scale) {
+    scale = scale || 1;
+    const pad = cell * 0.08;
+    const size = (cell - pad * 2) * scale;
+    const cx = gx * cell + cell / 2;
+    const cy = gy * cell + cell / 2;
+    const x = cx - size / 2;
+    const y = cy - size / 2;
+    const r = size * radiusFactor;
+    ctx.fillStyle = color;
+    roundRect(x, y, size, size, r);
+    ctx.fill();
+  }
+
+  function roundRect(x, y, w, h, r) {
+    r = Math.min(r, w / 2, h / 2);
+    ctx.beginPath();
+    ctx.moveTo(x + r, y);
+    ctx.arcTo(x + w, y, x + w, y + h, r);
+    ctx.arcTo(x + w, y + h, x, y + h, r);
+    ctx.arcTo(x, y + h, x, y, r);
+    ctx.arcTo(x, y, x + w, y, r);
+    ctx.closePath();
+  }
+
+  // ============================================================
+  // OVERLAYS / HUD
+  // ============================================================
+  function overlayStart() {
+    return `
+      <h1>SNAKE<span class="accent">.</span></h1>
+      <p>Eat the food, grow longer, don't hit yourself${WRAP_AROUND ? '' : ' or the walls'}.</p>
+      <div class="legend">
+        <span><b>← ↑ → ↓ / WASD</b></span><span>Move</span>
+        <span><b>Space / P</b></span><span>Pause</span>
+        <span><b>Enter / Space</b></span><span>Start · Restart</span>
+        <span><b>Swipe</b></span><span>Move (mobile)</span>
+      </div>
+      <div class="prompt">Press Enter or Space to start</div>`;
+  }
+  function overlayPaused() {
+    return `<h1>PAUSED</h1><div class="prompt">Press Space or P to resume</div>`;
+  }
+  function overlayGameOver() {
+    return `
+      <h1>GAME <span class="accent">OVER</span></h1>
+      <p>Score ${score} · Best ${Math.max(score, highScore)}</p>
+      <div class="prompt">Press Enter or Space to restart</div>`;
+  }
+  function overlayWin() {
+    return `
+      <h1>YOU <span class="accent">WIN!</span></h1>
+      <p>You filled the board. Score ${score}.</p>
+      <div class="prompt">Press Enter or Space to play again</div>`;
+  }
+  function showOverlay(html) { overlay.innerHTML = html; overlay.classList.remove('hidden'); }
+  function hideOverlay() { overlay.classList.add('hidden'); }
+  function updateScore() { scoreEl.textContent = score; }
+  function setHint(t) { hintEl.textContent = t; }
+
+  function triggerDeathJuice() {
+    flashEl.classList.remove('on'); void flashEl.offsetWidth; flashEl.classList.add('on');
+    stageEl.classList.remove('shake'); void stageEl.offsetWidth; stageEl.classList.add('shake');
+  }
+
+  // ============================================================
+  // AUDIO — muted by default, no autoplay; tiny WebAudio blips
+  // ============================================================
+  function beep(freq, dur) {
+    if (muted) return;
+    try {
+      if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      const o = audioCtx.createOscillator();
+      const g = audioCtx.createGain();
+      o.frequency.value = freq;
+      o.type = 'square';
+      g.gain.value = 0.04;
+      o.connect(g); g.connect(audioCtx.destination);
+      o.start();
+      g.gain.exponentialRampToValueAtTime(0.0001, audioCtx.currentTime + dur);
+      o.stop(audioCtx.currentTime + dur);
+    } catch (e) { /* audio optional — never break gameplay */ }
+  }
+  muteBtn.addEventListener('click', () => {
+    muted = !muted;
+    muteBtn.textContent = muted ? '🔇' : '🔊';
+    // Resume audio context on the user gesture that unmutes.
+    if (!muted && !audioCtx) {
+      try { audioCtx = new (window.AudioContext || window.webkitAudioContext)(); } catch (e) {}
+    }
+  });
+
+  // ============================================================
+  // KEYBOARD
+  // ============================================================
+  const MOVE_KEYS = {
+    ArrowUp: DIR.up, KeyW: DIR.up,
+    ArrowDown: DIR.down, KeyS: DIR.down,
+    ArrowLeft: DIR.left, KeyA: DIR.left,
+    ArrowRight: DIR.right, KeyD: DIR.right,
+  };
+
+  window.addEventListener('keydown', (e) => {
+    // Don't hijack typing in a real input/textarea (Invariant: WASD in fields)
+    const t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+
+    const code = e.code;
+
+    // Prevent arrows/space from scrolling the page (Invariant 11)
+    if (code === 'Space' || code.startsWith('Arrow')) e.preventDefault();
+
+    // Start / restart with Enter or Space (context dependent)
+    if (code === 'Enter' || code === 'Space') {
+      if (state === STATE.START || state === STATE.OVER || state === STATE.WIN) {
+        startNewGame();
+        return;
+      }
+      if (code === 'Space') {
+        // Space toggles pause while in play
+        if (state === STATE.PLAYING) pauseGame();
+        else if (state === STATE.PAUSED) resumeGame();
+        return;
+      }
+    }
+
+    // P toggles pause
+    if (code === 'KeyP') {
+      if (state === STATE.PLAYING) pauseGame();
+      else if (state === STATE.PAUSED) resumeGame();
+      return;
+    }
+
+    // Movement — only meaningful while playing (Invariant 4)
+    if (MOVE_KEYS[code] && state === STATE.PLAYING) {
+      queueDirection(MOVE_KEYS[code]);
+    }
+  });
+
+  // ============================================================
+  // TOUCH / SWIPE (Invariant 14) — map swipe to direction, block scroll/zoom
+  // ============================================================
+  let touchStart = null;
+  stageEl.addEventListener('touchstart', (e) => {
+    if (e.touches.length === 1) {
+      touchStart = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+    }
+    e.preventDefault();
+  }, { passive: false });
+
+  stageEl.addEventListener('touchmove', (e) => { e.preventDefault(); }, { passive: false });
+
+  stageEl.addEventListener('touchend', (e) => {
+    if (!touchStart) return;
+    const t = e.changedTouches[0];
+    const dx = t.clientX - touchStart.x;
+    const dy = t.clientY - touchStart.y;
+    const adx = Math.abs(dx), ady = Math.abs(dy);
+    const MIN_SWIPE = 24;
+
+    if (Math.max(adx, ady) < MIN_SWIPE) {
+      // A tap acts as start/restart when not playing.
+      if (state === STATE.START || state === STATE.OVER || state === STATE.WIN) startNewGame();
+      touchStart = null;
+      return;
+    }
+    if (state === STATE.PLAYING) {
+      if (adx > ady) queueDirection(dx > 0 ? DIR.right : DIR.left);
+      else queueDirection(dy > 0 ? DIR.down : DIR.up);
+    }
+    touchStart = null;
+  }, { passive: false });
+
+  // ============================================================
+  // AUTO-PAUSE on tab blur / hide (Invariant 10)
+  // ============================================================
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && state === STATE.PLAYING) pauseGame();
+  });
+  window.addEventListener('blur', () => {
+    if (state === STATE.PLAYING) pauseGame();
+  });
+
+  // Resize handling — re-fit without breaking grid coordinates (Invariant 13)
+  window.addEventListener('resize', resizeCanvas);
+
+  // ============================================================
+  // BOOT
+  // ============================================================
+  function init() {
+    highScore = loadHighScore();
+    highEl.textContent = highScore;
+    resizeCanvas();
+    resetGame();             // seed a snake + food so the start screen shows the board
+    state = STATE.START;
+    stopLoop();
+    showOverlay(overlayStart());
+    render();
+  }
+
+  init();
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Rural Racer</title>
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <!-- Play area: canvas + DOM overlay HUD stacked on top of it. -->
+  <div class="stage">
+    <canvas id="game" width="900" height="600" aria-label="Rural Racer game"></canvas>
+
+    <!-- HUD is a DOM overlay (crisp text, easy to style) — never painted on the canvas.
+         Queryable on demand, deliberately NOT a live region: it changes every frame. -->
+    <div class="hud" role="group" aria-label="Race status">
+      <div class="hud__row hud__row--top">
+        <div class="hud__panel">
+          <span class="hud__label">LAP</span>
+          <span id="lap" class="hud__value">1</span>
+        </div>
+        <div class="hud__panel">
+          <span class="hud__label">TIME</span>
+          <span id="time" class="hud__value hud__value--time">0:00.00</span>
+        </div>
+        <div class="hud__panel">
+          <span class="hud__label">BEST</span>
+          <span id="best" class="hud__value hud__value--time">--:--</span>
+        </div>
+        <div class="hud__panel">
+          <span class="hud__label">TOTAL</span>
+          <span id="race" class="hud__value hud__value--time">0:00.00</span>
+        </div>
+      </div>
+      <div class="hud__row hud__row--bottom">
+        <div class="hud__panel">
+          <span class="hud__label">LIVES</span>
+          <span id="lives" class="hud__value">3</span>
+        </div>
+        <div class="hud__panel hud__speed">
+          <span class="hud__label">SPEED</span>
+          <span id="speed" class="hud__value">0</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Transient lap-complete toast (slides in on each valid lap). A discrete
+         event, so this IS a live region — it announces each completed lap. -->
+    <div id="toast" class="toast" role="status"></div>
+
+    <!-- First-time controls hint; fades out after the first input (see PLAN §5 K1). -->
+    <div id="hint" class="hint">
+      <strong>Drive:</strong> ↑ / W gas · ↓ / S brake · ← → / A D steer
+    </div>
+
+    <!-- Full-stage screens for the lifecycle states (title / pause). -->
+    <div class="screens">
+      <div id="titleScreen" class="screen">
+        <h1 class="screen__title">RURAL RACER</h1>
+        <p class="screen__cta">Press <kbd>Enter</kbd> to start</p>
+        <p class="screen__controls">
+          ↑ / W gas · ↓ / S brake · ← → / A D steer · <kbd>P</kbd> pause · <kbd>R</kbd> restart
+        </p>
+      </div>
+      <div id="pauseScreen" class="screen is-hidden">
+        <h2 class="screen__title">Paused</h2>
+        <p class="screen__cta">Press <kbd>Enter</kbd> to resume</p>
+        <p class="screen__controls">
+          ↑ / W gas · ↓ / S brake · ← → / A D steer · <kbd>R</kbd> restart
+        </p>
+      </div>
+      <div id="gameoverScreen" class="screen is-hidden">
+        <h2 class="screen__title">GAME OVER</h2>
+        <p class="screen__result">
+          Laps completed <strong id="goLaps">0</strong>
+          · Best lap <strong id="goBest">--:--</strong>
+        </p>
+        <p class="screen__cta">Out of lives — press <kbd>Enter</kbd> to race again</p>
+      </div>
+    </div>
+
+    <!-- Big 3 · 2 · 1 · GO countdown. -->
+    <div id="countdown" class="countdown is-hidden" aria-hidden="true"></div>
+  </div>
+
+  <script src="game.js"></script>
+</body>
+</html>
