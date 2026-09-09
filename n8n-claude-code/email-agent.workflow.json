@@ -1,0 +1,173 @@
+{
+  "name": "Email agent",
+  "nodes": [
+    {
+      "id": "e1a2b3c4-1d2e-4f30-8a1b-2c3d4e5f6a7b",
+      "name": "Chat Trigger",
+      "type": "@n8n/n8n-nodes-langchain.chatTrigger",
+      "typeVersion": 1.4,
+      "position": [
+        0,
+        0
+      ],
+      "parameters": {
+        "options": {}
+      },
+      "webhookId": "585b5e1b-04fb-4c6d-9df8-ebb9db8f5a23"
+    },
+    {
+      "id": "f2b3c4d5-2e3f-4a41-9b2c-3d4e5f6a7b8c",
+      "name": "AI Agent",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 3.1,
+      "position": [
+        240,
+        0
+      ],
+      "parameters": {
+        "promptType": "auto",
+        "options": {
+          "maxIterations": 15,
+          "systemMessage": "You are an email assistant. When the user asks you to email someone:\n\n1. Call \"Look up contacts in Google Sheet\" to find that person's email address.\n2. If you cannot find the person in the sheet, stop and tell the user \u2014 never invent an address.\n3. Write the email and send it with \"Send email via Gmail\".\n4. Reply to the user confirming exactly who you emailed, at what address, and the subject line you used.\n\nToday's date is {{ $now.format('yyyy-MM-dd') }}."
+        }
+      }
+    },
+    {
+      "id": "a3c4d5e6-3f4a-4b52-ac3d-4e5f6a7b8c9d",
+      "name": "Google Gemini Chat Model",
+      "type": "@n8n/n8n-nodes-langchain.lmChatGoogleGemini",
+      "typeVersion": 1.1,
+      "position": [
+        80,
+        220
+      ],
+      "parameters": {
+        "modelName": "models/gemini-3-flash-preview",
+        "options": {}
+      }
+    },
+    {
+      "id": "b4d5e6f7-4a5b-4c63-8d4e-5f6a7b8c9d0e",
+      "name": "Simple Memory",
+      "type": "@n8n/n8n-nodes-langchain.memoryBufferWindow",
+      "typeVersion": 1.4,
+      "position": [
+        240,
+        220
+      ],
+      "parameters": {
+        "sessionIdType": "fromInput",
+        "contextWindowLength": 20
+      }
+    },
+    {
+      "id": "c5e6f7a8-5b6c-4d74-9e5f-6a7b8c9d0e1f",
+      "name": "Look up contacts in Google Sheet",
+      "type": "n8n-nodes-base.googleSheetsTool",
+      "typeVersion": 4.7,
+      "position": [
+        400,
+        220
+      ],
+      "parameters": {
+        "toolDescription": "Read the contact list from the Google Sheet. Returns every row with the people's names and their email addresses. Call this first, before sending any email, to find the correct address for the person the user named. Never guess an email address.",
+        "resource": "sheet",
+        "operation": "read",
+        "documentId": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "sheetName": {
+          "__rl": true,
+          "mode": "list",
+          "value": ""
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "d6f7a8b9-6c7d-4e85-af60-7b8c9d0e1f2a",
+      "name": "Send email via Gmail",
+      "type": "n8n-nodes-base.gmailTool",
+      "typeVersion": 2.2,
+      "position": [
+        560,
+        220
+      ],
+      "parameters": {
+        "toolDescription": "Send an email through Gmail to one recipient. Only call this after you have looked up the recipient's address in the Google Sheet. Sending is immediate and cannot be undone.",
+        "resource": "message",
+        "operation": "send",
+        "sendTo": "={{ $fromAI('to_email', 'The recipient email address, copied exactly from the Google Sheet lookup. Must be a real address from the sheet, never invented.', 'string') }}",
+        "subject": "={{ $fromAI('subject', 'A short specific subject line for this email, under 80 characters.', 'string') }}",
+        "emailType": "text",
+        "message": "={{ $fromAI('message_body', 'The full plain-text body of the email, written out completely and ready to send. Include a greeting and a sign-off.', 'string') }}",
+        "options": {
+          "appendAttribution": false
+        }
+      },
+      "webhookId": "5b5d518c-03a6-4f2c-8859-293ee5c717a7"
+    }
+  ],
+  "connections": {
+    "Chat Trigger": {
+      "main": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Google Gemini Chat Model": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Simple Memory": {
+      "ai_memory": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_memory",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Look up contacts in Google Sheet": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Send email via Gmail": {
+      "ai_tool": [
+        [
+          {
+            "node": "AI Agent",
+            "type": "ai_tool",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  }
+}

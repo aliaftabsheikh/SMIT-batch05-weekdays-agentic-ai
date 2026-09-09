@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "n8n-mcp": {
+      "type": "stdio",
+      "command": "npx",
+      "args": [
+        "-y",
+        "n8n-mcp"
+      ],
+      "env": {
+        "N8N_API_URL": "http://localhost:5678",
+        "N8N_API_KEY": "${N8N_API_KEY}",
+        "WEBHOOK_SECURITY_MODE": "moderate"
+      }
+    }
+  }
+}
